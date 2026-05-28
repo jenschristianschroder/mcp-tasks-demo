@@ -38,37 +38,44 @@ $subscriptionId = (az account show --query id -o tsv)
 Write-Host "==> Creating Tasks API app registration: $TasksApiAppName"
 $tasksApi = az ad app create --display-name $TasksApiAppName --sign-in-audience AzureADMyOrg | ConvertFrom-Json
 $tasksApiId = $tasksApi.appId
+$tasksApiObjId = $tasksApi.id
 Write-Host "    App ID: $tasksApiId"
 az ad app update --id $tasksApiId --identifier-uris "api://$tasksApiId" | Out-Null
 
-# Expose Tasks.ReadWrite scope
-Write-Host "    Exposing Tasks.ReadWrite scope..."
-$tasksScopeId = [guid]::NewGuid().ToString()
-@{
-  api = @{
-    oauth2PermissionScopes = @(@{
-      id                      = $tasksScopeId
-      adminConsentDescription = "Allow the application to read and write tasks on behalf of the signed-in user."
-      adminConsentDisplayName = "Read/write tasks"
-      userConsentDescription  = "Allow the app to manage your tasks."
-      userConsentDisplayName  = "Manage your tasks"
-      value                   = "Tasks.ReadWrite"
-      type                    = "User"
-      isEnabled               = $true
-    })
-  }
-} | ConvertTo-Json -Depth 10 | Out-File -Encoding utf8 tasks-api-manifest.json
+# Expose Tasks.ReadWrite scope (skip if it already exists)
+$existingTasksScope = az ad app show --id $tasksApiId --query "api.oauth2PermissionScopes[?value=='Tasks.ReadWrite'].id" -o tsv
+if ($existingTasksScope) {
+  Write-Host "    Tasks.ReadWrite scope already exists: $existingTasksScope"
+  $tasksScopeId = $existingTasksScope
+} else {
+  Write-Host "    Exposing Tasks.ReadWrite scope..."
+  $tasksScopeId = [guid]::NewGuid().ToString()
+  @{
+    api = @{
+      oauth2PermissionScopes = @(@{
+        id                      = $tasksScopeId
+        adminConsentDescription = "Allow the application to read and write tasks on behalf of the signed-in user."
+        adminConsentDisplayName = "Read/write tasks"
+        userConsentDescription  = "Allow the app to manage your tasks."
+        userConsentDisplayName  = "Manage your tasks"
+        value                   = "Tasks.ReadWrite"
+        type                    = "User"
+        isEnabled               = $true
+      })
+    }
+  } | ConvertTo-Json -Depth 10 | Out-File -Encoding utf8 tasks-api-manifest.json
 
-az rest --method PATCH `
-  --uri "https://graph.microsoft.com/v1.0/applications(appId='$tasksApiId')" `
-  --body "@tasks-api-manifest.json"
-if ($LASTEXITCODE -ne 0) { Write-Error "Failed to set Tasks.ReadWrite scope on Tasks API app." }
-Remove-Item tasks-api-manifest.json -Force
+  az rest --method PATCH `
+    --uri "https://graph.microsoft.com/v1.0/applications/$tasksApiObjId" `
+    --body "@tasks-api-manifest.json"
+  if ($LASTEXITCODE -ne 0) { Write-Error "Failed to set Tasks.ReadWrite scope on Tasks API app." }
+  Remove-Item tasks-api-manifest.json -Force
 
-# Verify scope was created
-$verifyScope = az ad app show --id $tasksApiId --query "api.oauth2PermissionScopes[?value=='Tasks.ReadWrite'].id" -o tsv
-if (-not $verifyScope) { Write-Error "Tasks.ReadWrite scope was not created. Check Graph API permissions." }
-Write-Host "    Tasks.ReadWrite scope ID: $verifyScope"
+  # Verify scope was created
+  $tasksScopeId = az ad app show --id $tasksApiId --query "api.oauth2PermissionScopes[?value=='Tasks.ReadWrite'].id" -o tsv
+  if (-not $tasksScopeId) { Write-Error "Tasks.ReadWrite scope was not created. Check Graph API permissions." }
+}
+Write-Host "    Tasks.ReadWrite scope ID: $tasksScopeId"
 
 # Ensure the Tasks API service principal exists
 $existingSp = az ad sp show --id $tasksApiId --query appId -o tsv 2>$null
@@ -84,12 +91,21 @@ if (-not $existingSp) {
 Write-Host "==> Creating MCP server app registration: $McpServerAppName"
 $mcpApp = az ad app create --display-name $McpServerAppName --sign-in-audience AzureADMyOrg | ConvertFrom-Json
 $mcpId = $mcpApp.appId
+$mcpObjId = $mcpApp.id
 Write-Host "    App ID: $mcpId"
 az ad app update --id $mcpId --identifier-uris "api://$mcpId" | Out-Null
 
-# Step 2a: Expose mcp.access scope and set redirect URIs
-Write-Host "    Exposing mcp.access scope and setting redirect URIs..."
-$mcpScopeId = [guid]::NewGuid().ToString()
+# Step 2a: Expose mcp.access scope and set redirect URIs (skip scope if exists)
+$existingMcpScope = az ad app show --id $mcpId --query "api.oauth2PermissionScopes[?value=='mcp.access'].id" -o tsv
+if ($existingMcpScope) {
+  Write-Host "    mcp.access scope already exists: $existingMcpScope"
+  $mcpScopeId = $existingMcpScope
+} else {
+  Write-Host "    Exposing mcp.access scope..."
+  $mcpScopeId = [guid]::NewGuid().ToString()
+}
+
+# Always PATCH to ensure redirect URIs are set (idempotent)
 @{
   api = @{
     oauth2PermissionScopes = @(@{
@@ -112,15 +128,15 @@ $mcpScopeId = [guid]::NewGuid().ToString()
 } | ConvertTo-Json -Depth 10 | Out-File -Encoding utf8 mcp-scope.json
 
 az rest --method PATCH `
-  --uri "https://graph.microsoft.com/v1.0/applications(appId='$mcpId')" `
+  --uri "https://graph.microsoft.com/v1.0/applications/$mcpObjId" `
   --body "@mcp-scope.json"
 if ($LASTEXITCODE -ne 0) { Write-Error "Failed to set mcp.access scope on MCP server app." }
 Remove-Item mcp-scope.json -Force
 
-# Verify scope was created
-$verifyMcpScope = az ad app show --id $mcpId --query "api.oauth2PermissionScopes[?value=='mcp.access'].id" -o tsv
-if (-not $verifyMcpScope) { Write-Error "mcp.access scope was not created. Check Graph API permissions." }
-Write-Host "    mcp.access scope ID: $verifyMcpScope"
+# Verify scope
+$mcpScopeId = az ad app show --id $mcpId --query "api.oauth2PermissionScopes[?value=='mcp.access'].id" -o tsv
+if (-not $mcpScopeId) { Write-Error "mcp.access scope was not created. Check Graph API permissions." }
+Write-Host "    mcp.access scope ID: $mcpScopeId"
 
 # Step 2b: Create service principal (must exist before adding permissions)
 $existingMcpSp = az ad sp show --id $mcpId --query appId -o tsv 2>$null
@@ -160,7 +176,7 @@ $copilotStudioClientId = "96ff4394-9197-43aa-b393-6a41652e21f8"
 } | ConvertTo-Json -Depth 10 | Out-File -Encoding utf8 mcp-preauth.json
 
 az rest --method PATCH `
-  --uri "https://graph.microsoft.com/v1.0/applications(appId='$mcpId')" `
+  --uri "https://graph.microsoft.com/v1.0/applications/$mcpObjId" `
   --body "@mcp-preauth.json"
 if ($LASTEXITCODE -ne 0) { Write-Warning "Failed to pre-authorize Copilot Studio. You may need to do this manually." }
 Remove-Item mcp-preauth.json -Force
