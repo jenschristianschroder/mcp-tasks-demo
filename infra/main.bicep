@@ -130,6 +130,7 @@ resource tasksApi 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'ca-tasks-api-${resourceToken}'
   location: location
   tags: union(tags, { 'azd-service-name': 'tasks-api' })
+  dependsOn: [acrPullRole, pgDatabase, pgFirewall]
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: { '${identity.id}': {} }
@@ -171,6 +172,7 @@ resource mcpServer 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'ca-mcp-server-${resourceToken}'
   location: location
   tags: union(tags, { 'azd-service-name': 'mcp-server' })
+  dependsOn: [acrPullRole]
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: { '${identity.id}': {} }
