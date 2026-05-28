@@ -1,0 +1,50 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install azd
+        uses: Azure/setup-azd@v2
+
+      - name: Log in with Azure (federated credentials)
+        run: |
+          azd auth login `
+            --client-id "$AZURE_CLIENT_ID" `
+            --federated-credential-provider "github" `
+            --tenant-id "$AZURE_TENANT_ID"
+        shell: pwsh
+
+      - name: Set azd env variables
+        run: |
+          azd env new "${{ vars.AZURE_ENV_NAME }}" --no-prompt
+          azd env set AZURE_LOCATION           "${{ vars.AZURE_LOCATION }}"
+          azd env set AZURE_TENANT_ID          "${{ vars.AZURE_TENANT_ID }}"
+          azd env set AZURE_SUBSCRIPTION_ID    "${{ vars.AZURE_SUBSCRIPTION_ID }}"
+          azd env set TASKS_API_CLIENT_ID      "${{ vars.TASKS_API_CLIENT_ID }}"
+          azd env set MCP_SERVER_CLIENT_ID     "${{ vars.MCP_SERVER_CLIENT_ID }}"
+          azd env set POSTGRES_PASSWORD        "${{ secrets.POSTGRES_PASSWORD }}"
+        shell: bash
+
+      - name: Provision and Deploy
+        run: azd up --no-prompt
+        shell: bash

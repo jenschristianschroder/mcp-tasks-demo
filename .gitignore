@@ -1,0 +1,33 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## ASP.NET
+appsettings.Development.json
+
+## Azure Developer CLI
+.azure/
+
+## IDE
+.vs/
+.vscode/.browse.c_cpp_properties.json
+*.code-workspace
+
+## OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+## Build outputs
+publish/
+out/
+
+## EF Core
+*.db
+*.db-shm
+*.db-wal

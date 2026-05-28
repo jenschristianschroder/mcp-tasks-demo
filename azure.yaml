@@ -1,0 +1,27 @@
+name: mcp-tasks-demo
+metadata:
+  template: azd-init@1.11.0
+
+services:
+  tasks-api:
+    project: ./tasks-api
+    host: containerapp
+    language: dotnet
+    docker:
+      path: ./Dockerfile
+  mcp-server:
+    project: ./mcp-server
+    host: containerapp
+    language: dotnet
+    docker:
+      path: ./Dockerfile
+
+infra:
+  provider: bicep
+  path: infra
+  module: main
+
+hooks:
+  postprovision:
+    shell: pwsh
+    run: ./hooks/postprovision.ps1
