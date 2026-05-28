@@ -45,6 +45,10 @@ jobs:
           azd env set POSTGRES_PASSWORD        "${{ secrets.POSTGRES_PASSWORD }}"
         shell: bash
 
-      - name: Provision and Deploy
-        run: azd up --no-prompt
+      - name: Provision Infrastructure
+        run: azd provision --no-prompt
+        shell: bash
+
+      - name: Deploy Services
+        run: azd deploy --no-prompt
         shell: bash
