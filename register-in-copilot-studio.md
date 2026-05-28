@@ -16,16 +16,29 @@ Go to <https://copilotstudio.microsoft.com> and open your agent (or create a new
 2. Choose **Custom MCP server**.
 3. Fill in:
    - **Server name**: `Tasks MCP`
-   - **Server URL**: paste the `MCP_ENDPOINT` from `azd` output
-   - **Transport**: `Streamable HTTP`
-4. Under **Authentication**, choose **OAuth 2.0**:
-   - **Identity provider**: `Microsoft Entra ID`
-   - **Client id**: `<MCP_SERVER_CLIENT_ID>`
-   - **Client secret**: `<MCP_SERVER_CLIENT_SECRET>` (the one printed by `setup-entra.ps1`)
-   - **Authorization URL**: `https://login.microsoftonline.com/<TENANT_ID>/oauth2/v2.0/authorize`
-   - **Token URL**: `https://login.microsoftonline.com/<TENANT_ID>/oauth2/v2.0/token`
-   - **Scope**: `api://<MCP_SERVER_CLIENT_ID>/mcp.access offline_access`
-5. Save. Copilot Studio will probe the server, list the 5 tools, and you can toggle them on.
+   - **Server description**: `Manage tasks via CRUD operations`
+   - **Server URL**: paste the MCP endpoint URL from `azd` output, e.g.
+     `https://ca-mcp-server-<token>.<region>.azurecontainerapps.io/mcp`
+4. Under **Authentication**, choose **OAuth 2.0**.
+5. Under **Type**, choose **Dynamic discovery**.
+   - The server exposes `/.well-known/oauth-protected-resource` and
+     `/.well-known/oauth-authorization-server` with a `registration_endpoint`
+     that handles Dynamic Client Registration (RFC 7591) automatically.
+   - Copilot Studio will discover the Entra ID auth/token endpoints and
+     register itself as a public client — no manual configuration needed.
+6. Save. Copilot Studio will probe the server, list the 5 tools, and you can toggle them on.
+
+> **Fallback — Manual configuration**
+>
+> If Dynamic discovery does not work, select **Manual** and fill in:
+>
+> | Field | Value |
+> |---|---|
+> | **Client ID** | `<MCP_SERVER_CLIENT_ID>` |
+> | **Client secret** | create one with `az ad app credential reset --id <MCP_SERVER_CLIENT_ID> --append --display-name "Copilot Studio"` |
+> | **Authorization URL** | `https://login.microsoftonline.com/<TENANT_ID>/oauth2/v2.0/authorize` |
+> | **Token URL** | `https://login.microsoftonline.com/<TENANT_ID>/oauth2/v2.0/token` |
+> | **Scope** | `api://<MCP_SERVER_CLIENT_ID>/mcp.access offline_access` |
 
 ## 3. Test it
 

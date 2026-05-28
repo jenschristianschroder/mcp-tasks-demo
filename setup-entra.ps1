@@ -105,6 +105,9 @@ Remove-Item mcp-manifest.json -Force
 
 az ad sp create --id $mcpId 2>$null | Out-Null
 
+# Enable public client flows so DCR can return token_endpoint_auth_method=none
+az ad app update --id $mcpId --is-fallback-public-client true | Out-Null
+
 # Pre-authorize Copilot Studio as a known client (skip consent)
 $copilotStudioClientId = "96ff4394-9197-43aa-b393-6a41652e21f8"
 @{
