@@ -38,9 +38,11 @@ $subscriptionId = (az account show --query id -o tsv)
 Write-Host "==> Creating Tasks API app registration: $TasksApiAppName"
 $tasksApi = az ad app create --display-name $TasksApiAppName --sign-in-audience AzureADMyOrg | ConvertFrom-Json
 $tasksApiId = $tasksApi.appId
+Write-Host "    App ID: $tasksApiId"
 az ad app update --id $tasksApiId --identifier-uris "api://$tasksApiId" | Out-Null
 
 # Expose Tasks.ReadWrite scope
+Write-Host "    Exposing Tasks.ReadWrite scope..."
 $tasksScopeId = [guid]::NewGuid().ToString()
 @{
   api = @{
@@ -59,19 +61,34 @@ $tasksScopeId = [guid]::NewGuid().ToString()
 
 az rest --method PATCH `
   --uri "https://graph.microsoft.com/v1.0/applications(appId='$tasksApiId')" `
-  --body "@tasks-api-manifest.json" | Out-Null
+  --body "@tasks-api-manifest.json"
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to set Tasks.ReadWrite scope on Tasks API app." }
 Remove-Item tasks-api-manifest.json -Force
 
-az ad sp create --id $tasksApiId 2>$null | Out-Null
+# Verify scope was created
+$verifyScope = az ad app show --id $tasksApiId --query "api.oauth2PermissionScopes[?value=='Tasks.ReadWrite'].id" -o tsv
+if (-not $verifyScope) { Write-Error "Tasks.ReadWrite scope was not created. Check Graph API permissions." }
+Write-Host "    Tasks.ReadWrite scope ID: $verifyScope"
+
+# Ensure the Tasks API service principal exists
+$existingSp = az ad sp show --id $tasksApiId --query appId -o tsv 2>$null
+if (-not $existingSp) {
+  Write-Host "    Creating Tasks API service principal..."
+  az ad sp create --id $tasksApiId | Out-Null
+} else {
+  Write-Host "    Tasks API service principal already exists."
+}
 
 # ── 2. MCP server app registration ──────────────────────────────────────────
 
 Write-Host "==> Creating MCP server app registration: $McpServerAppName"
 $mcpApp = az ad app create --display-name $McpServerAppName --sign-in-audience AzureADMyOrg | ConvertFrom-Json
 $mcpId = $mcpApp.appId
+Write-Host "    App ID: $mcpId"
 az ad app update --id $mcpId --identifier-uris "api://$mcpId" | Out-Null
 
-# Expose mcp.access scope, set redirect URIs, require Tasks API permission
+# Step 2a: Expose mcp.access scope and set redirect URIs
+Write-Host "    Exposing mcp.access scope and setting redirect URIs..."
 $mcpScopeId = [guid]::NewGuid().ToString()
 @{
   api = @{
@@ -92,23 +109,46 @@ $mcpScopeId = [guid]::NewGuid().ToString()
       "https://global.consent.azure-apim.net/redirect"
     )
   }
-  requiredResourceAccess = @(@{
-    resourceAppId  = $tasksApiId
-    resourceAccess = @(@{ id = $tasksScopeId; type = "Scope" })
-  })
-} | ConvertTo-Json -Depth 10 | Out-File -Encoding utf8 mcp-manifest.json
+} | ConvertTo-Json -Depth 10 | Out-File -Encoding utf8 mcp-scope.json
 
 az rest --method PATCH `
   --uri "https://graph.microsoft.com/v1.0/applications(appId='$mcpId')" `
-  --body "@mcp-manifest.json" | Out-Null
-Remove-Item mcp-manifest.json -Force
+  --body "@mcp-scope.json"
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to set mcp.access scope on MCP server app." }
+Remove-Item mcp-scope.json -Force
 
-az ad sp create --id $mcpId 2>$null | Out-Null
+# Verify scope was created
+$verifyMcpScope = az ad app show --id $mcpId --query "api.oauth2PermissionScopes[?value=='mcp.access'].id" -o tsv
+if (-not $verifyMcpScope) { Write-Error "mcp.access scope was not created. Check Graph API permissions." }
+Write-Host "    mcp.access scope ID: $verifyMcpScope"
 
-# Enable public client flows so DCR can return token_endpoint_auth_method=none
+# Step 2b: Create service principal (must exist before adding permissions)
+$existingMcpSp = az ad sp show --id $mcpId --query appId -o tsv 2>$null
+if (-not $existingMcpSp) {
+  Write-Host "    Creating MCP server service principal..."
+  az ad sp create --id $mcpId | Out-Null
+} else {
+  Write-Host "    MCP server service principal already exists."
+}
+
+# Step 2c: Add Tasks.ReadWrite API permission via CLI (more reliable than PATCH requiredResourceAccess)
+Write-Host "    Adding Tasks.ReadWrite permission to MCP server app..."
+az ad app permission add --id $mcpId --api $tasksApiId --api-permissions "${tasksScopeId}=Scope" | Out-Null
+
+# Step 2d: Grant admin consent
+Write-Host "    Granting admin consent..."
+az ad app permission admin-consent --id $mcpId 2>$null
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "    WARNING: Admin consent could not be granted automatically."
+  Write-Host "             Grant it manually: Entra ID -> App registrations -> $McpServerAppName -> API permissions -> Grant admin consent"
+}
+
+# Step 2e: Enable public client flows (required for DCR with token_endpoint_auth_method=none)
+Write-Host "    Enabling public client flows..."
 az ad app update --id $mcpId --is-fallback-public-client true | Out-Null
 
-# Pre-authorize Copilot Studio as a known client (skip consent)
+# Step 2f: Pre-authorize Copilot Studio as a known client (skip consent)
+Write-Host "    Pre-authorizing Copilot Studio..."
 $copilotStudioClientId = "96ff4394-9197-43aa-b393-6a41652e21f8"
 @{
   api = @{
@@ -121,7 +161,8 @@ $copilotStudioClientId = "96ff4394-9197-43aa-b393-6a41652e21f8"
 
 az rest --method PATCH `
   --uri "https://graph.microsoft.com/v1.0/applications(appId='$mcpId')" `
-  --body "@mcp-preauth.json" | Out-Null
+  --body "@mcp-preauth.json"
+if ($LASTEXITCODE -ne 0) { Write-Warning "Failed to pre-authorize Copilot Studio. You may need to do this manually." }
 Remove-Item mcp-preauth.json -Force
 
 # ── 3. GitHub Actions service principal (OIDC, no secret) ────────────────────
@@ -129,8 +170,17 @@ Remove-Item mcp-preauth.json -Force
 Write-Host "==> Creating GitHub Actions service principal: $GitHubSpName"
 $ghApp = az ad app create --display-name $GitHubSpName | ConvertFrom-Json
 $ghAppId = $ghApp.appId
-az ad sp create --id $ghAppId 2>$null | Out-Null
-$ghSpId = (az ad sp show --id $ghAppId --query id -o tsv)
+Write-Host "    App ID: $ghAppId"
+
+$existingGhSp = az ad sp show --id $ghAppId --query id -o tsv 2>$null
+if (-not $existingGhSp) {
+  Write-Host "    Creating service principal..."
+  az ad sp create --id $ghAppId | Out-Null
+  $ghSpId = (az ad sp show --id $ghAppId --query id -o tsv)
+} else {
+  Write-Host "    Service principal already exists."
+  $ghSpId = $existingGhSp
+}
 
 # Assign Contributor + Role Based Access Control Administrator
 Write-Host "    Assigning Contributor role..."
@@ -199,7 +249,3 @@ Write-Host ""
 Write-Host "NOTE: The post-provision hook (hooks/postprovision.ps1) will"
 Write-Host "      automatically create the federated identity credential"
 Write-Host "      on the MCP server app registration after deployment."
-Write-Host ""
-Write-Host "NOTE: You still need to grant admin consent in the Azure Portal:"
-Write-Host "      Entra ID -> App registrations -> $McpServerAppName ->"
-Write-Host "      API permissions -> Grant admin consent."
