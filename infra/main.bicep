@@ -24,6 +24,9 @@ param postgresPassword string
 var resourceToken = toLower(uniqueString(subscription().id, resourceGroup().id, environmentName))
 var tags = { 'azd-env-name': environmentName }
 
+// Placeholder image used during initial provisioning before real images are pushed.
+var placeholderImage = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+
 resource law 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: 'log-${resourceToken}'
   location: location
@@ -154,7 +157,7 @@ resource tasksApi 'Microsoft.App/containerApps@2024-03-01' = {
     template: {
       containers: [{
         name: 'tasks-api'
-        image: '${acr.properties.loginServer}/tasks-api:latest'
+        image: placeholderImage
         resources: { cpu: json('0.5'), memory: '1Gi' }
         env: [
           { name: 'AzureAd__TenantId', value: tenantId }
@@ -193,7 +196,7 @@ resource mcpServer 'Microsoft.App/containerApps@2024-03-01' = {
     template: {
       containers: [{
         name: 'mcp-server'
-        image: '${acr.properties.loginServer}/mcp-server:latest'
+        image: placeholderImage
         resources: { cpu: json('0.5'), memory: '1Gi' }
         env: [
           { name: 'AzureAd__TenantId', value: tenantId }
