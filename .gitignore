@@ -27,6 +27,12 @@ Desktop.ini
 publish/
 out/
 
+## Node / Web App
+node_modules/
+web-app/dist/
+web-app/.env
+web-app/.env.local
+
 ## EF Core
 *.db
 *.db-shm

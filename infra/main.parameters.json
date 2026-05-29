@@ -7,6 +7,7 @@
     "tenantId": { "value": "${AZURE_TENANT_ID}" },
     "tasksApiClientId": { "value": "${TASKS_API_CLIENT_ID}" },
     "mcpServerClientId": { "value": "${MCP_SERVER_CLIENT_ID}" },
+    "webAppClientId": { "value": "${WEB_APP_CLIENT_ID}" },
     "postgresPassword": { "value": "${POSTGRES_PASSWORD}" }
   }
 }

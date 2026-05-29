@@ -17,6 +17,9 @@ param tasksApiClientId string
 @description('App registration client id for the MCP server')
 param mcpServerClientId string
 
+@description('App registration client id for the Web App (SPA)')
+param webAppClientId string
+
 @secure()
 @description('PostgreSQL admin password')
 param postgresPassword string
@@ -212,9 +215,48 @@ resource mcpServer 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
+resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
+  name: 'ca-web-app-${resourceToken}'
+  location: location
+  tags: union(tags, { 'azd-service-name': 'web-app' })
+  dependsOn: [acrPullRole]
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: { '${identity.id}': {} }
+  }
+  properties: {
+    managedEnvironmentId: cae.id
+    configuration: {
+      ingress: {
+        external: true
+        targetPort: 8080
+        transport: 'auto'
+      }
+      registries: [{
+        server: acr.properties.loginServer
+        identity: identity.id
+      }]
+    }
+    template: {
+      containers: [{
+        name: 'web-app'
+        image: placeholderImage
+        resources: { cpu: json('0.25'), memory: '0.5Gi' }
+        env: [
+          { name: 'VITE_ENTRA_CLIENT_ID', value: webAppClientId }
+          { name: 'VITE_ENTRA_TENANT_ID', value: tenantId }
+          { name: 'VITE_TASKS_API_SCOPE', value: 'api://${tasksApiClientId}/Tasks.ReadWrite' }
+        ]
+      }]
+      scale: { minReplicas: 1, maxReplicas: 3 }
+    }
+  }
+}
+
 output AZURE_LOCATION string = location
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = acr.properties.loginServer
 output AZURE_CONTAINER_REGISTRY_NAME string = acr.name
 output TASKS_API_URL string = 'https://${tasksApi.properties.configuration.ingress.fqdn}'
 output MCP_SERVER_URL string = 'https://${mcpServer.properties.configuration.ingress.fqdn}'
 output MCP_ENDPOINT string = 'https://${mcpServer.properties.configuration.ingress.fqdn}/mcp'
+output WEB_APP_URL string = 'https://${webApp.properties.configuration.ingress.fqdn}'

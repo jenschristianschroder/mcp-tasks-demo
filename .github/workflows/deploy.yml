@@ -42,6 +42,7 @@ jobs:
           azd env set AZURE_SUBSCRIPTION_ID    "${{ vars.AZURE_SUBSCRIPTION_ID }}"
           azd env set TASKS_API_CLIENT_ID      "${{ vars.TASKS_API_CLIENT_ID }}"
           azd env set MCP_SERVER_CLIENT_ID     "${{ vars.MCP_SERVER_CLIENT_ID }}"
+          azd env set WEB_APP_CLIENT_ID        "${{ vars.WEB_APP_CLIENT_ID }}"
           azd env set POSTGRES_PASSWORD        "${{ secrets.POSTGRES_PASSWORD }}"
         shell: bash
 
