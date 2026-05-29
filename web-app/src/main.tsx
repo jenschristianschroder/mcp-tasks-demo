@@ -8,12 +8,14 @@ import App from './App';
 
 const msalInstance = new PublicClientApplication(msalConfig);
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <MsalProvider instance={msalInstance}>
-      <FluentProvider theme={webLightTheme}>
-        <App />
-      </FluentProvider>
-    </MsalProvider>
-  </React.StrictMode>
-);
+msalInstance.initialize().then(() => {
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <MsalProvider instance={msalInstance}>
+        <FluentProvider theme={webLightTheme}>
+          <App />
+        </FluentProvider>
+      </MsalProvider>
+    </React.StrictMode>
+  );
+});
