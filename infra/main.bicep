@@ -266,7 +266,7 @@ resource webAppAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = {
       azureActiveDirectory: {
         registration: {
           clientId: webAppClientId
-          openIdIssuer: 'https://login.microsoftonline.com/${tenantId}/v2.0'
+          openIdIssuer: '${environment().authentication.loginEndpoint}${tenantId}/v2.0'
         }
         login: {
           loginParameters: [
