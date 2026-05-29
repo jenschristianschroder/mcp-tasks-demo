@@ -219,44 +219,11 @@ resource mcpServer 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-// Storage account for EasyAuth token store
-resource tokenStorageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
-  name: 'st${resourceToken}'
-  location: location
-  tags: tags
-  kind: 'StorageV2'
-  sku: { name: 'Standard_LRS' }
-  properties: {
-    allowBlobPublicAccess: false
-    minimumTlsVersion: 'TLS1_2'
-  }
-}
-
-resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
-  parent: tokenStorageAccount
-  name: 'default'
-}
-
-resource tokenStoreContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
-  parent: blobService
-  name: 'tokenstore'
-}
-
-var tokenStoreSas = tokenStorageAccount.listAccountSas('2023-05-01', {
-  signedProtocol: 'https'
-  signedResourceTypes: 'sco'
-  signedPermission: 'rwdlacup'
-  signedServices: 'b'
-  signedExpiry: '2030-01-01T00:00:00Z'
-}).accountSasToken
-
-var tokenStoreSasUrl = '${tokenStorageAccount.properties.primaryEndpoints.blob}tokenstore?${tokenStoreSas}'
-
-resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
+resource webApp 'Microsoft.App/containerApps@2025-01-01' = {
   name: 'ca-web-app-${resourceToken}'
   location: location
   tags: union(tags, { 'azd-service-name': 'web-app' })
-  dependsOn: [acrPullRole, tokenStoreContainer]
+  dependsOn: [acrPullRole]
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: { '${identity.id}': {} }
@@ -274,7 +241,6 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
         identity: identity.id
       }]
       secrets: [
-        { name: 'token-store-sas', value: tokenStoreSasUrl }
         { name: 'webapp-client-secret', value: webAppClientSecret }
       ]
     }
@@ -293,7 +259,7 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 // EasyAuth configuration for the Web App
-resource webAppAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = {
+resource webAppAuth 'Microsoft.App/containerApps/authConfigs@2025-01-01' = {
   parent: webApp
   name: 'current'
   properties: {
@@ -320,9 +286,6 @@ resource webAppAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = {
     login: {
       tokenStore: {
         enabled: true
-        azureBlobStorage: {
-          sasUrlSettingName: 'token-store-sas'
-        }
       }
     }
   }
