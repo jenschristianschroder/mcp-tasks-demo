@@ -36,11 +36,21 @@ $subscriptionId = (az account show --query id -o tsv)
 # ── 1. Tasks API app registration ────────────────────────────────────────────
 
 Write-Host "==> Creating Tasks API app registration: $TasksApiAppName"
-$tasksApi = az ad app create --display-name $TasksApiAppName --sign-in-audience AzureADMyOrg | ConvertFrom-Json
-$tasksApiId = $tasksApi.appId
-$tasksApiObjId = $tasksApi.id
+$existingTasksApi = az ad app list --display-name $TasksApiAppName --query "[0].appId" -o tsv 2>$null
+if ($existingTasksApi) {
+  Write-Host "    App already exists: $existingTasksApi"
+  $tasksApiId = $existingTasksApi
+} else {
+  $tasksApi = az ad app create --display-name $TasksApiAppName --sign-in-audience AzureADMyOrg | ConvertFrom-Json
+  $tasksApiId = $tasksApi.appId
+  Write-Host "    Created app: $tasksApiId"
+  # Wait for Graph API replication
+  Write-Host "    Waiting for Graph API replication..."
+  Start-Sleep -Seconds 5
+}
 Write-Host "    App ID: $tasksApiId"
-az ad app update --id $tasksApiId --identifier-uris "api://$tasksApiId" | Out-Null
+az ad app update --id $tasksApiId --identifier-uris "api://$tasksApiId" 2>$null | Out-Null
+$tasksApiObjId = az ad app show --id $tasksApiId --query id -o tsv
 
 # Expose Tasks.ReadWrite scope (skip if it already exists)
 $existingTasksScope = az ad app show --id $tasksApiId --query "api.oauth2PermissionScopes[?value=='Tasks.ReadWrite'].id" -o tsv
@@ -89,11 +99,21 @@ if (-not $existingSp) {
 # ── 2. MCP server app registration ──────────────────────────────────────────
 
 Write-Host "==> Creating MCP server app registration: $McpServerAppName"
-$mcpApp = az ad app create --display-name $McpServerAppName --sign-in-audience AzureADMyOrg | ConvertFrom-Json
-$mcpId = $mcpApp.appId
-$mcpObjId = $mcpApp.id
+$existingMcpApp = az ad app list --display-name $McpServerAppName --query "[0].appId" -o tsv 2>$null
+if ($existingMcpApp) {
+  Write-Host "    App already exists: $existingMcpApp"
+  $mcpId = $existingMcpApp
+} else {
+  $mcpApp = az ad app create --display-name $McpServerAppName --sign-in-audience AzureADMyOrg | ConvertFrom-Json
+  $mcpId = $mcpApp.appId
+  Write-Host "    Created app: $mcpId"
+  # Wait for Graph API replication
+  Write-Host "    Waiting for Graph API replication..."
+  Start-Sleep -Seconds 5
+}
 Write-Host "    App ID: $mcpId"
-az ad app update --id $mcpId --identifier-uris "api://$mcpId" | Out-Null
+az ad app update --id $mcpId --identifier-uris "api://$mcpId" 2>$null | Out-Null
+$mcpObjId = az ad app show --id $mcpId --query id -o tsv
 
 # Step 2a: Expose mcp.access scope and set redirect URIs (skip scope if exists)
 $existingMcpScope = az ad app show --id $mcpId --query "api.oauth2PermissionScopes[?value=='mcp.access'].id" -o tsv
@@ -184,8 +204,15 @@ Remove-Item mcp-preauth.json -Force
 # ── 3. GitHub Actions service principal (OIDC, no secret) ────────────────────
 
 Write-Host "==> Creating GitHub Actions service principal: $GitHubSpName"
-$ghApp = az ad app create --display-name $GitHubSpName | ConvertFrom-Json
-$ghAppId = $ghApp.appId
+$existingGhApp = az ad app list --display-name $GitHubSpName --query "[0].appId" -o tsv 2>$null
+if ($existingGhApp) {
+  Write-Host "    App already exists: $existingGhApp"
+  $ghAppId = $existingGhApp
+} else {
+  $ghApp = az ad app create --display-name $GitHubSpName | ConvertFrom-Json
+  $ghAppId = $ghApp.appId
+  Write-Host "    Created app: $ghAppId"
+}
 Write-Host "    App ID: $ghAppId"
 
 $existingGhSp = az ad sp show --id $ghAppId --query id -o tsv 2>$null
