@@ -28,6 +28,9 @@ if ($webAppClientId -and $webAppUrl) {
     @{
       web = @{
         redirectUris = $updatedUris
+        implicitGrantSettings = @{
+          enableIdTokenIssuance = $true
+        }
       }
     } | ConvertTo-Json -Depth 10 | Out-File -Encoding utf8 webapp-redirect.json
     az rest --method PATCH `
@@ -42,8 +45,6 @@ if ($webAppClientId -and $webAppUrl) {
 } else {
   Write-Host "WARNING: WEB_APP_CLIENT_ID or WEB_APP_URL not set. Skipping redirect URI setup."
 }
-
-# ── Federated identity credential for MCP server ─────────────────────────────
 
 # Resolve the managed identity provisioned by Bicep
 $miPrincipalId = az identity list -g $rgName --query "[0].principalId" -o tsv 2>$null

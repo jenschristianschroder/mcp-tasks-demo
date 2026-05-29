@@ -45,6 +45,16 @@ export async function getAuthUser(): Promise<EasyAuthUser | null> {
 }
 
 export async function getAccessToken(): Promise<string | null> {
+  // Refresh the token via EasyAuth's refresh endpoint
+  try {
+    const refreshResponse = await fetch('/.auth/refresh');
+    if (!refreshResponse.ok) return cachedUser?.accessToken ?? null;
+  } catch {
+    // ignore refresh errors, use cached
+  }
+
+  // Clear cache and re-fetch
+  cachedUser = null;
   const user = await getAuthUser();
   return user?.accessToken ?? null;
 }

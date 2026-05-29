@@ -219,7 +219,7 @@ if ($existingWebApp) {
 Write-Host "    App ID: $webAppId"
 $webAppObjId = az ad app show --id $webAppId --query id -o tsv
 
-# Step 3a: Enable ID token issuance and configure web redirect URIs for EasyAuth
+# Step 3a: Enable implicit ID token issuance (required by EasyAuth) and configure web redirect URIs
 Write-Host "    Configuring web redirect URIs and enabling ID token issuance..."
 @{
   web = @{

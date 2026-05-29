@@ -3,9 +3,9 @@ import { ApiLogEntry, CreateTaskRequest, TodoTask, UpdateTaskRequest } from '../
 type LogListener = (entry: ApiLogEntry) => void;
 
 const listeners: LogListener[] = [];
-let accessTokenProvider: (() => Promise<string>) | null = null;
+let accessTokenProvider: (() => Promise<string | null>) | null = null;
 
-export function setAccessTokenProvider(provider: () => Promise<string>) {
+export function setAccessTokenProvider(provider: () => Promise<string | null>) {
   accessTokenProvider = provider;
 }
 
@@ -31,7 +31,9 @@ async function apiCall<T>(method: string, url: string, body?: unknown): Promise<
 
   if (accessTokenProvider) {
     const token = await accessTokenProvider();
-    headers['Authorization'] = `Bearer ${token}`;
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
   }
 
   const options: RequestInit = { method, headers };
