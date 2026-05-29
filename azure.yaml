@@ -15,6 +15,12 @@ services:
     language: dotnet
     docker:
       path: ./Dockerfile
+  web-app:
+    project: ./web-app
+    host: containerapp
+    language: js
+    docker:
+      path: ./Dockerfile
 
 infra:
   provider: bicep

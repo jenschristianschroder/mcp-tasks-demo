@@ -25,6 +25,7 @@ param(
   [Parameter(Mandatory = $true)] [string] $GitHubRepo,
   [string] $TasksApiAppName = "mcp-tasks-api-$EnvName",
   [string] $McpServerAppName = "mcp-tasks-server-$EnvName",
+  [string] $WebAppName = "mcp-tasks-webapp-$EnvName",
   [string] $GitHubSpName = "github-mcp-tasks-$EnvName"
 )
 
@@ -201,7 +202,62 @@ az rest --method PATCH `
 if ($LASTEXITCODE -ne 0) { Write-Warning "Failed to pre-authorize Copilot Studio. You may need to do this manually." }
 Remove-Item mcp-preauth.json -Force
 
-# ── 3. GitHub Actions service principal (OIDC, no secret) ────────────────────
+# ── 3. Web app (SPA) registration ────────────────────────────────────────────
+
+Write-Host "==> Creating Web App (SPA) registration: $WebAppName"
+$existingWebApp = az ad app list --display-name $WebAppName --query "[0].appId" -o tsv 2>$null
+if ($existingWebApp) {
+  Write-Host "    App already exists: $existingWebApp"
+  $webAppId = $existingWebApp
+} else {
+  $webApp = az ad app create --display-name $WebAppName --sign-in-audience AzureADMyOrg | ConvertFrom-Json
+  $webAppId = $webApp.appId
+  Write-Host "    Created app: $webAppId"
+  Write-Host "    Waiting for Graph API replication..."
+  Start-Sleep -Seconds 5
+}
+Write-Host "    App ID: $webAppId"
+$webAppObjId = az ad app show --id $webAppId --query id -o tsv
+
+# Step 3a: Configure as SPA with redirect URIs
+Write-Host "    Configuring SPA redirect URIs..."
+@{
+  spa = @{
+    redirectUris = @(
+      "http://localhost:3000",
+      "http://localhost:5173"
+    )
+  }
+} | ConvertTo-Json -Depth 10 | Out-File -Encoding utf8 webapp-spa.json
+
+az rest --method PATCH `
+  --uri "https://graph.microsoft.com/v1.0/applications/$webAppObjId" `
+  --body "@webapp-spa.json"
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to configure SPA redirect URIs." }
+Remove-Item webapp-spa.json -Force
+
+# Step 3b: Create service principal
+$existingWebAppSp = az ad sp show --id $webAppId --query appId -o tsv 2>$null
+if (-not $existingWebAppSp) {
+  Write-Host "    Creating Web App service principal..."
+  az ad sp create --id $webAppId | Out-Null
+} else {
+  Write-Host "    Web App service principal already exists."
+}
+
+# Step 3c: Add Tasks.ReadWrite API permission
+Write-Host "    Adding Tasks.ReadWrite permission to Web App..."
+az ad app permission add --id $webAppId --api $tasksApiId --api-permissions "${tasksScopeId}=Scope" | Out-Null
+
+# Step 3d: Grant admin consent
+Write-Host "    Granting admin consent..."
+az ad app permission admin-consent --id $webAppId 2>$null
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "    WARNING: Admin consent could not be granted automatically."
+  Write-Host "             Grant it manually: Entra ID -> App registrations -> $WebAppName -> API permissions -> Grant admin consent"
+}
+
+# ── 4. GitHub Actions service principal (OIDC, no secret) ────────────────────
 
 Write-Host "==> Creating GitHub Actions service principal: $GitHubSpName"
 $existingGhApp = az ad app list --display-name $GitHubSpName --query "[0].appId" -o tsv 2>$null
@@ -262,6 +318,7 @@ Write-Host ""
 Write-Host "  azd env set AZURE_TENANT_ID          $tenantId"
 Write-Host "  azd env set TASKS_API_CLIENT_ID      $tasksApiId"
 Write-Host "  azd env set MCP_SERVER_CLIENT_ID     $mcpId"
+Write-Host "  azd env set WEB_APP_CLIENT_ID        $webAppId"
 Write-Host "  azd env set POSTGRES_PASSWORD        <strong-password>"
 Write-Host ""
 Write-Host "============================================================"
@@ -275,6 +332,7 @@ Write-Host "  AZURE_ENV_NAME          $EnvName"
 Write-Host "  AZURE_LOCATION          <your-region>"
 Write-Host "  TASKS_API_CLIENT_ID     $tasksApiId"
 Write-Host "  MCP_SERVER_CLIENT_ID    $mcpId"
+Write-Host "  WEB_APP_CLIENT_ID       $webAppId"
 Write-Host ""
 Write-Host "============================================================"
 Write-Host " GitHub Actions secrets (Settings > Secrets > Actions):"
@@ -288,6 +346,14 @@ Write-Host "============================================================"
 Write-Host ""
 Write-Host "  Tasks API:    api://$tasksApiId/Tasks.ReadWrite"
 Write-Host "  MCP server:   api://$mcpId/mcp.access"
+Write-Host ""
+Write-Host "============================================================"
+Write-Host " Web App .env (web-app/.env):"
+Write-Host "============================================================"
+Write-Host ""
+Write-Host "  VITE_ENTRA_CLIENT_ID=$webAppId"
+Write-Host "  VITE_ENTRA_TENANT_ID=$tenantId"
+Write-Host "  VITE_TASKS_API_SCOPE=api://$tasksApiId/Tasks.ReadWrite"
 Write-Host ""
 Write-Host "NOTE: The post-provision hook (hooks/postprovision.ps1) will"
 Write-Host "      automatically create the federated identity credential"

@@ -154,6 +154,31 @@ You can then point the MCP Inspector (`npx @modelcontextprotocol/inspector`) at 
 
 With both Container Apps scaled to `minReplicas: 1` at 0.5 vCPU / 1 GiB, expect roughly $40-60/month per app plus ACR Basic ($5/month). Scaling to zero (`minReplicas: 0`) brings idle cost close to zero at the price of a cold-start on the first request.
 
+## GitHub Actions CI/CD
+
+The repository supports automated deployment via GitHub Actions using OIDC (federated credentials — no secrets stored for Azure auth).
+
+### Variables (Settings > Secrets and variables > Actions > Variables)
+
+| Variable                 | Description                                              | Example                          |
+| ------------------------ | -------------------------------------------------------- | -------------------------------- |
+| `AZURE_CLIENT_ID`        | App (client) ID of the GitHub Actions service principal  | `xxxxxxxx-xxxx-xxxx-xxxx-xxxx`   |
+| `AZURE_TENANT_ID`        | Entra ID tenant ID                                       | `xxxxxxxx-xxxx-xxxx-xxxx-xxxx`   |
+| `AZURE_SUBSCRIPTION_ID`  | Azure subscription ID                                    | `xxxxxxxx-xxxx-xxxx-xxxx-xxxx`   |
+| `AZURE_ENV_NAME`         | azd environment name (e.g. `dev`, `staging`, `prod`)     | `dev`                            |
+| `AZURE_LOCATION`         | Azure region for deployment                              | `eastus2`                        |
+| `TASKS_API_CLIENT_ID`    | App (client) ID of the Tasks API app registration        | `xxxxxxxx-xxxx-xxxx-xxxx-xxxx`   |
+| `MCP_SERVER_CLIENT_ID`   | App (client) ID of the MCP Server app registration       | `xxxxxxxx-xxxx-xxxx-xxxx-xxxx`   |
+| `WEB_APP_CLIENT_ID`      | App (client) ID of the Web App (SPA) app registration    | `xxxxxxxx-xxxx-xxxx-xxxx-xxxx`   |
+
+### Secrets (Settings > Secrets and variables > Actions > Secrets)
+
+| Secret              | Description                                      |
+| ------------------- | ------------------------------------------------ |
+| `POSTGRES_PASSWORD` | Password for the Azure Database for PostgreSQL   |
+
+All values are printed by `setup-entra.ps1` after it runs. Copy them directly into your GitHub repository settings.
+
 ## Cleanup
 
 ```pwsh
