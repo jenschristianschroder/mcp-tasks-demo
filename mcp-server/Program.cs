@@ -54,7 +54,7 @@ app.MapGet("/.well-known/oauth-protected-resource", (HttpContext ctx, IConfigura
     {
         resource = $"api://{clientId}",
         authorization_servers = new[] { baseUrl },
-        scopes_supported = new[] { "mcp.access" },
+        scopes_supported = new[] { $"api://{clientId}/mcp.access", "offline_access" },
         bearer_methods_supported = new[] { "header" }
     });
 });

@@ -72,13 +72,13 @@ export default function App() {
 
   const isAuthenticated = !!user;
 
-  // Check EasyAuth session on mount
+  // Check auth status on mount
   useEffect(() => {
     getAuthUser().then((u) => {
       setUser(u);
       setAuthChecked(true);
       if (u) {
-        setAccessTokenProvider(getAccessToken);
+        setAccessTokenProvider(() => getAccessToken().then((t) => t || ''));
       }
     });
   }, []);
@@ -117,6 +117,8 @@ export default function App() {
 
   const userName = user?.name || '';
 
+  if (!authChecked) return null;
+
   return (
     <div className={styles.root}>
       <div className={styles.header}>
@@ -140,14 +142,13 @@ export default function App() {
             </>
           ) : (
             <Button
-              appearance="transparent"
-              icon={<PersonAccounts24Regular />}
-              onClick={handleLogin}
-              disabled={inProgress !== InteractionStatus.None}
-              style={{ color: 'inherit' }}
-            >
-              Sign in
-            </Button>
+                appearance="transparent"
+                icon={<PersonAccounts24Regular />}
+                onClick={handleLogin}
+                style={{ color: 'inherit' }}
+              >
+                Sign in
+              </Button>
           )}
         </div>
       </div>
@@ -171,7 +172,6 @@ export default function App() {
                 appearance="primary"
                 icon={<PersonAccounts24Regular />}
                 onClick={handleLogin}
-                disabled={!authChecked}
               >
                 Sign in
               </Button>

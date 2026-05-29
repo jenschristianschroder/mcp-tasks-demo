@@ -278,6 +278,9 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
         name: 'web-app'
         image: placeholderImage
         resources: { cpu: json('0.25'), memory: '0.5Gi' }
+        env: [
+          { name: 'TASKS_API_URL', value: 'https://${tasksApi.properties.configuration.ingress.fqdn}' }
+        ]
       }]
       scale: { minReplicas: 1, maxReplicas: 3 }
     }

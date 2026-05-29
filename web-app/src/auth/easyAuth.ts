@@ -60,10 +60,14 @@ export async function getAccessToken(): Promise<string | null> {
 }
 
 export function login() {
-  window.location.href = '/.auth/login/aad';
+  window.location.href = '/.auth/login/aad?post_login_redirect_uri=' + encodeURIComponent(window.location.pathname);
 }
 
 export function logout() {
   cachedUser = null;
   window.location.href = '/.auth/logout';
+}
+
+export function clearCache() {
+  cachedUser = null;
 }
