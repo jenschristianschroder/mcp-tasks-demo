@@ -1,10 +1,16 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
+using Microsoft.OpenApi.Models;
 using TasksApi.Data;
 using TasksApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var tenantId = builder.Configuration["AzureAd:TenantId"];
+var clientId = builder.Configuration["AzureAd:ClientId"];
+var authorizationUrl = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/authorize";
+var tokenUrl = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -14,7 +20,35 @@ builder.Services.AddAuthorization();
 builder.Services.AddDbContext<TasksDbContext>(o =>
     o.UseNpgsql(builder.Configuration.GetConnectionString("TasksDb")));
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.AddSecurityDefinition("oauth2", new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.OAuth2,
+        Flows = new OpenApiOAuthFlows
+        {
+            AuthorizationCode = new OpenApiOAuthFlow
+            {
+                AuthorizationUrl = new Uri(authorizationUrl),
+                TokenUrl = new Uri(tokenUrl),
+                Scopes = new Dictionary<string, string>
+                {
+                    { $"api://{clientId}/Tasks.ReadWrite", "Read and write tasks" }
+                }
+            }
+        }
+    });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "oauth2" }
+            },
+            new[] { $"api://{clientId}/Tasks.ReadWrite" }
+        }
+    });
+});
 
 var app = builder.Build();
 
@@ -25,7 +59,11 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseSwagger();
-app.UseSwaggerUI();
+app.UseSwaggerUI(c =>
+{
+    c.OAuthClientId(clientId);
+    c.OAuthUsePkce();
+});
 
 app.UseAuthentication();
 app.UseAuthorization();

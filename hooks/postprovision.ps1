@@ -2,17 +2,20 @@
 .SYNOPSIS
   Post-provision hook:
   1. Adds the deployed EasyAuth callback redirect URI to the web app registration.
-  2. Creates a federated identity credential on the MCP server app registration
+  2. Adds the Swagger OAuth redirect URI (SPA) to the Tasks API registration.
+  3. Creates a federated identity credential on the MCP server app registration
      so the managed identity can authenticate via OBO without a client secret.
 #>
 $ErrorActionPreference = "Stop"
 
-$tenantId      = $env:AZURE_TENANT_ID
-$mcpClientId   = $env:MCP_SERVER_CLIENT_ID
+$tenantId       = $env:AZURE_TENANT_ID
+$mcpClientId    = $env:MCP_SERVER_CLIENT_ID
+$tasksApiClientId = $env:TASKS_API_CLIENT_ID
 $webAppClientId = $env:WEB_APP_CLIENT_ID
-$webAppUrl     = $env:WEB_APP_URL
-$envName       = $env:AZURE_ENV_NAME
-$rgName        = "rg-$envName"
+$tasksApiUrl    = $env:TASKS_API_URL
+$webAppUrl      = $env:WEB_APP_URL
+$envName        = $env:AZURE_ENV_NAME
+$rgName         = "rg-$envName"
 
 # ── Add EasyAuth callback as web redirect URI ────────────────────────────────
 if ($webAppClientId -and $webAppUrl) {
@@ -44,6 +47,30 @@ if ($webAppClientId -and $webAppUrl) {
   }
 } else {
   Write-Host "WARNING: WEB_APP_CLIENT_ID or WEB_APP_URL not set. Skipping redirect URI setup."
+}
+
+# ── Add Swagger OAuth redirect as SPA redirect URI on Tasks API ──────────────
+if ($tasksApiClientId -and $tasksApiUrl) {
+  Write-Host "==> Adding Swagger OAuth redirect URI to Tasks API registration..."
+  $tasksApiObjId = az ad app show --id $tasksApiClientId --query id -o tsv
+  $swaggerRedirect = "$tasksApiUrl/swagger/oauth2-redirect.html"
+
+  $existingSpaUris = az ad app show --id $tasksApiClientId --query "spa.redirectUris" -o json | ConvertFrom-Json
+  if (-not $existingSpaUris) { $existingSpaUris = @() }
+  if ($existingSpaUris -notcontains $swaggerRedirect) {
+    $updatedSpaUris = @($existingSpaUris) + @($swaggerRedirect)
+    @{ spa = @{ redirectUris = $updatedSpaUris } } | ConvertTo-Json -Depth 5 | Out-File -Encoding utf8 tasks-api-spa.json
+    az rest --method PATCH `
+      --uri "https://graph.microsoft.com/v1.0/applications/$tasksApiObjId" `
+      --body "@tasks-api-spa.json" `
+      --headers "Content-Type=application/json"
+    Remove-Item tasks-api-spa.json -Force
+    Write-Host "    Added SPA redirect URI: $swaggerRedirect"
+  } else {
+    Write-Host "    SPA redirect URI already exists: $swaggerRedirect"
+  }
+} else {
+  Write-Host "WARNING: TASKS_API_CLIENT_ID or TASKS_API_URL not set. Skipping Swagger redirect URI setup."
 }
 
 # Resolve the managed identity provisioned by Bicep
