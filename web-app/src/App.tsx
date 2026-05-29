@@ -13,7 +13,7 @@ import { TaskList } from './components/TaskList';
 import { TaskForm } from './components/TaskForm';
 import { ApiConsole } from './components/ApiConsole';
 import { tasksApi, onApiLog, setAccessTokenProvider } from './api/tasksApi';
-import { getAuthUser, getAccessToken, logout, EasyAuthUser } from './auth/easyAuth';
+import { getAuthUser, getAccessToken, login, logout, EasyAuthUser } from './auth/easyAuth';
 import { ApiLogEntry, TodoTask } from './types';
 
 const useStyles = makeStyles({
@@ -74,12 +74,16 @@ export default function App() {
 
   // Fetch auth info from EasyAuth on mount.
   // With RedirectToLoginPage, the user is always authenticated by the time the SPA loads.
+  // If /.auth/me fails (stale session), redirect back to login.
   useEffect(() => {
     getAuthUser().then((u) => {
-      setUser(u);
-      setAuthChecked(true);
       if (u) {
+        setUser(u);
+        setAuthChecked(true);
         setAccessTokenProvider(() => getAccessToken().then((t) => t || ''));
+      } else {
+        // Session is stale or missing — redirect to EasyAuth login
+        login();
       }
     });
   }, []);
