@@ -243,12 +243,42 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
         image: placeholderImage
         resources: { cpu: json('0.25'), memory: '0.5Gi' }
         env: [
-          { name: 'VITE_ENTRA_CLIENT_ID', value: webAppClientId }
-          { name: 'VITE_ENTRA_TENANT_ID', value: tenantId }
-          { name: 'VITE_TASKS_API_SCOPE', value: 'api://${tasksApiClientId}/Tasks.ReadWrite' }
+          { name: 'TASKS_API_URL', value: 'https://${tasksApi.properties.configuration.ingress.fqdn}' }
         ]
       }]
       scale: { minReplicas: 1, maxReplicas: 3 }
+    }
+  }
+}
+
+// EasyAuth configuration for the Web App
+resource webAppAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = {
+  parent: webApp
+  name: 'current'
+  properties: {
+    platform: {
+      enabled: true
+    }
+    globalValidation: {
+      unauthenticatedClientAction: 'AllowAnonymous'
+    }
+    identityProviders: {
+      azureActiveDirectory: {
+        registration: {
+          clientId: webAppClientId
+          openIdIssuer: 'https://login.microsoftonline.com/${tenantId}/v2.0'
+        }
+        login: {
+          loginParameters: [
+            'scope=openid profile email api://${tasksApiClientId}/Tasks.ReadWrite'
+          ]
+        }
+      }
+    }
+    login: {
+      tokenStore: {
+        enabled: true
+      }
     }
   }
 }

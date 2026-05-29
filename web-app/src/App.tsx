@@ -9,13 +9,11 @@ import {
   Persona,
 } from '@fluentui/react-components';
 import { PersonAccounts24Regular, SignOut24Regular } from '@fluentui/react-icons';
-import { useIsAuthenticated, useMsal } from '@azure/msal-react';
-import { InteractionStatus } from '@azure/msal-browser';
 import { TaskList } from './components/TaskList';
 import { TaskForm } from './components/TaskForm';
 import { ApiConsole } from './components/ApiConsole';
 import { tasksApi, onApiLog, setAccessTokenProvider } from './api/tasksApi';
-import { loginRequest } from './auth/authConfig';
+import { getAuthUser, getAccessToken, login, logout, EasyAuthUser } from './auth/easyAuth';
 import { ApiLogEntry, TodoTask } from './types';
 
 const useStyles = makeStyles({
@@ -66,24 +64,24 @@ const useStyles = makeStyles({
 
 export default function App() {
   const styles = useStyles();
-  const { instance, accounts, inProgress } = useMsal();
-  const isAuthenticated = useIsAuthenticated();
+  const [user, setUser] = useState<EasyAuthUser | null>(null);
   const [tasks, setTasks] = useState<TodoTask[]>([]);
   const [logs, setLogs] = useState<ApiLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
-  // Wire up token provider once authenticated
+  const isAuthenticated = !!user;
+
+  // Check auth status on mount
   useEffect(() => {
-    if (isAuthenticated && accounts.length > 0) {
-      setAccessTokenProvider(async () => {
-        const response = await instance.acquireTokenSilent({
-          ...loginRequest,
-          account: accounts[0],
-        });
-        return response.accessToken;
-      });
-    }
-  }, [isAuthenticated, accounts, instance]);
+    getAuthUser().then((u) => {
+      setUser(u);
+      setAuthChecked(true);
+      if (u) {
+        setAccessTokenProvider(() => getAccessToken().then((t) => t || ''));
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onApiLog((entry) => {
@@ -110,14 +108,16 @@ export default function App() {
   }, [loadTasks]);
 
   const handleLogin = () => {
-    instance.loginPopup(loginRequest);
+    login();
   };
 
   const handleLogout = () => {
-    instance.logoutPopup();
+    logout();
   };
 
-  const userName = accounts[0]?.name || accounts[0]?.username || '';
+  const userName = user?.name || '';
+
+  if (!authChecked) return null;
 
   return (
     <div className={styles.root}>
@@ -142,14 +142,13 @@ export default function App() {
             </>
           ) : (
             <Button
-              appearance="transparent"
-              icon={<PersonAccounts24Regular />}
-              onClick={handleLogin}
-              disabled={inProgress !== InteractionStatus.None}
-              style={{ color: 'inherit' }}
-            >
-              Sign in
-            </Button>
+                appearance="transparent"
+                icon={<PersonAccounts24Regular />}
+                onClick={handleLogin}
+                style={{ color: 'inherit' }}
+              >
+                Sign in
+              </Button>
           )}
         </div>
       </div>
@@ -173,7 +172,6 @@ export default function App() {
                 appearance="primary"
                 icon={<PersonAccounts24Regular />}
                 onClick={handleLogin}
-                disabled={inProgress !== InteractionStatus.None}
               >
                 Sign in
               </Button>
