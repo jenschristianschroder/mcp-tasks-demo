@@ -278,7 +278,7 @@ resource webAppAuth 'Microsoft.App/containerApps/authConfigs@2025-01-01' = {
         }
         login: {
           loginParameters: [
-            'scope=openid profile email api://${tasksApiClientId}/Tasks.ReadWrite'
+            'scope=openid profile email offline_access api://${tasksApiClientId}/Tasks.ReadWrite'
           ]
         }
       }
