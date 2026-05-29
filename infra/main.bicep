@@ -17,8 +17,12 @@ param tasksApiClientId string
 @description('App registration client id for the MCP server')
 param mcpServerClientId string
 
-@description('App registration client id for the Web App (SPA)')
+@description('App registration client id for the Web App')
 param webAppClientId string
+
+@secure()
+@description('Client secret for the Web App registration (EasyAuth code flow)')
+param webAppClientSecret string
 
 @secure()
 @description('PostgreSQL admin password')
@@ -271,6 +275,7 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
       }]
       secrets: [
         { name: 'token-store-sas', value: tokenStoreSasUrl }
+        { name: 'webapp-client-secret', value: webAppClientSecret }
       ]
     }
     template: {
@@ -302,6 +307,7 @@ resource webAppAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = {
       azureActiveDirectory: {
         registration: {
           clientId: webAppClientId
+          clientSecretSettingName: 'webapp-client-secret'
           openIdIssuer: '${environment().authentication.loginEndpoint}${tenantId}/v2.0'
         }
         login: {

@@ -1,8 +1,9 @@
 <#
 .SYNOPSIS
-  Post-provision hook: creates a federated identity credential on the MCP server
-  app registration so the managed identity can authenticate via OBO without a client secret.
-  Also adds the EasyAuth callback redirect URI to the web app registration.
+  Post-provision hook:
+  1. Adds the deployed EasyAuth callback redirect URI to the web app registration.
+  2. Creates a federated identity credential on the MCP server app registration
+     so the managed identity can authenticate via OBO without a client secret.
 #>
 $ErrorActionPreference = "Stop"
 
@@ -34,7 +35,8 @@ if ($webAppClientId -and $webAppUrl) {
     } | ConvertTo-Json -Depth 10 | Out-File -Encoding utf8 webapp-redirect.json
     az rest --method PATCH `
       --uri "https://graph.microsoft.com/v1.0/applications/$webAppObjId" `
-      --body "@webapp-redirect.json"
+      --body "@webapp-redirect.json" `
+      --headers "Content-Type=application/json"
     Remove-Item webapp-redirect.json -Force
     Write-Host "    Added web redirect URI: $callbackUri"
   } else {

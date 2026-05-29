@@ -219,8 +219,8 @@ if ($existingWebApp) {
 Write-Host "    App ID: $webAppId"
 $webAppObjId = az ad app show --id $webAppId --query id -o tsv
 
-# Step 3a: Enable implicit ID token issuance (required by EasyAuth) and set web redirect URIs
-Write-Host "    Enabling ID token issuance for EasyAuth..."
+# Step 3a: Enable implicit ID token issuance (required by EasyAuth) and configure web redirect URIs
+Write-Host "    Configuring web redirect URIs and enabling ID token issuance..."
 @{
   web = @{
     redirectUris = @(
@@ -234,11 +234,24 @@ Write-Host "    Enabling ID token issuance for EasyAuth..."
 
 az rest --method PATCH `
   --uri "https://graph.microsoft.com/v1.0/applications/$webAppObjId" `
-  --body "@webapp-spa.json"
-if ($LASTEXITCODE -ne 0) { Write-Error "Failed to configure SPA redirect URIs." }
+  --body "@webapp-spa.json" `
+  --headers "Content-Type=application/json"
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to configure web app." }
 Remove-Item webapp-spa.json -Force
 
-# Step 3b: Create service principal
+# Step 3b: Create or retrieve client secret for EasyAuth code flow
+Write-Host "    Creating client secret for EasyAuth..."
+$existingSecrets = az ad app credential list --id $webAppId --query "[?displayName=='EasyAuth']" | ConvertFrom-Json
+if ($existingSecrets -and $existingSecrets.Count -gt 0) {
+  Write-Host "    Client secret 'EasyAuth' already exists. To rotate, delete and re-run."
+  Write-Host "    WARNING: You must have stored the secret value during initial creation."
+} else {
+  $secretResult = az ad app credential reset --id $webAppId --display-name "EasyAuth" --years 2 | ConvertFrom-Json
+  $webAppClientSecret = $secretResult.password
+  Write-Host "    Client secret created."
+}
+
+# Step 3c: Create service principal
 $existingWebAppSp = az ad sp show --id $webAppId --query appId -o tsv 2>$null
 if (-not $existingWebAppSp) {
   Write-Host "    Creating Web App service principal..."
@@ -247,11 +260,11 @@ if (-not $existingWebAppSp) {
   Write-Host "    Web App service principal already exists."
 }
 
-# Step 3c: Add Tasks.ReadWrite API permission
+# Step 3d: Add Tasks.ReadWrite API permission
 Write-Host "    Adding Tasks.ReadWrite permission to Web App..."
 az ad app permission add --id $webAppId --api $tasksApiId --api-permissions "${tasksScopeId}=Scope" | Out-Null
 
-# Step 3d: Grant admin consent
+# Step 3e: Grant admin consent
 Write-Host "    Granting admin consent..."
 az ad app permission admin-consent --id $webAppId 2>$null
 if ($LASTEXITCODE -ne 0) {
@@ -321,6 +334,11 @@ Write-Host "  azd env set AZURE_TENANT_ID          $tenantId"
 Write-Host "  azd env set TASKS_API_CLIENT_ID      $tasksApiId"
 Write-Host "  azd env set MCP_SERVER_CLIENT_ID     $mcpId"
 Write-Host "  azd env set WEB_APP_CLIENT_ID        $webAppId"
+if ($webAppClientSecret) {
+  Write-Host "  azd env set WEB_APP_CLIENT_SECRET    $webAppClientSecret"
+} else {
+  Write-Host "  azd env set WEB_APP_CLIENT_SECRET    <from-initial-setup>"
+}
 Write-Host "  azd env set POSTGRES_PASSWORD        <strong-password>"
 Write-Host ""
 Write-Host "============================================================"
@@ -341,6 +359,11 @@ Write-Host " GitHub Actions secrets (Settings > Secrets > Actions):"
 Write-Host "============================================================"
 Write-Host ""
 Write-Host "  POSTGRES_PASSWORD       <strong-password>"
+if ($webAppClientSecret) {
+  Write-Host "  WEB_APP_CLIENT_SECRET   $webAppClientSecret"
+} else {
+  Write-Host "  WEB_APP_CLIENT_SECRET   <from-initial-setup>"
+}
 Write-Host ""
 Write-Host "============================================================"
 Write-Host " Scopes:"
@@ -357,6 +380,9 @@ Write-Host "  VITE_ENTRA_CLIENT_ID=$webAppId"
 Write-Host "  VITE_ENTRA_TENANT_ID=$tenantId"
 Write-Host "  VITE_TASKS_API_SCOPE=api://$tasksApiId/Tasks.ReadWrite"
 Write-Host ""
+Write-Host "NOTE: With EasyAuth (RedirectToLoginPage), the web app"
+Write-Host "      does not need VITE_* vars. Auth is handled server-side."
+Write-Host ""
 Write-Host "NOTE: The post-provision hook (hooks/postprovision.ps1) will"
-Write-Host "      automatically create the federated identity credential"
-Write-Host "      on the MCP server app registration after deployment."
+Write-Host "      automatically add the EasyAuth callback redirect URI and"
+Write-Host "      create the federated identity credential after deployment."
