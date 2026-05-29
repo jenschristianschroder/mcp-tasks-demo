@@ -8,12 +8,12 @@ import {
   Body1,
   Persona,
 } from '@fluentui/react-components';
-import { PersonAccounts24Regular, SignOut24Regular } from '@fluentui/react-icons';
+import { SignOut24Regular } from '@fluentui/react-icons';
 import { TaskList } from './components/TaskList';
 import { TaskForm } from './components/TaskForm';
 import { ApiConsole } from './components/ApiConsole';
 import { tasksApi, onApiLog, setAccessTokenProvider } from './api/tasksApi';
-import { getAuthUser, getAccessToken, login, logout, EasyAuthUser } from './auth/easyAuth';
+import { getAuthUser, getAccessToken, logout, EasyAuthUser } from './auth/easyAuth';
 import { ApiLogEntry, TodoTask } from './types';
 
 const useStyles = makeStyles({
@@ -72,7 +72,8 @@ export default function App() {
 
   const isAuthenticated = !!user;
 
-  // Check auth status on mount
+  // Fetch auth info from EasyAuth on mount.
+  // With RedirectToLoginPage, the user is always authenticated by the time the SPA loads.
   useEffect(() => {
     getAuthUser().then((u) => {
       setUser(u);
@@ -107,10 +108,6 @@ export default function App() {
     loadTasks();
   }, [loadTasks]);
 
-  const handleLogin = () => {
-    login();
-  };
-
   const handleLogout = () => {
     logout();
   };
@@ -124,7 +121,7 @@ export default function App() {
       <div className={styles.header}>
         <Title1 style={{ color: 'inherit' }}>Tasks Manager</Title1>
         <div className={styles.headerActions}>
-          {isAuthenticated ? (
+          {isAuthenticated && (
             <>
               <Persona
                 name={userName}
@@ -140,15 +137,6 @@ export default function App() {
                 Sign out
               </Button>
             </>
-          ) : (
-            <Button
-                appearance="transparent"
-                icon={<PersonAccounts24Regular />}
-                onClick={handleLogin}
-                style={{ color: 'inherit' }}
-              >
-                Sign in
-              </Button>
           )}
         </div>
       </div>
@@ -167,14 +155,7 @@ export default function App() {
         ) : (
           <div className={styles.mainPanel}>
             <div className={styles.loginContainer}>
-              <Body1>Sign in with your Microsoft account to manage tasks.</Body1>
-              <Button
-                appearance="primary"
-                icon={<PersonAccounts24Regular />}
-                onClick={handleLogin}
-              >
-                Sign in
-              </Button>
+              <Body1>Loading authentication...</Body1>
             </div>
           </div>
         )}

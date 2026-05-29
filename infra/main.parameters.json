@@ -8,6 +8,7 @@
     "tasksApiClientId": { "value": "${TASKS_API_CLIENT_ID}" },
     "mcpServerClientId": { "value": "${MCP_SERVER_CLIENT_ID}" },
     "webAppClientId": { "value": "${WEB_APP_CLIENT_ID}" },
+    "webAppClientSecret": { "value": "${WEB_APP_CLIENT_SECRET}" },
     "postgresPassword": { "value": "${POSTGRES_PASSWORD}" }
   }
 }
