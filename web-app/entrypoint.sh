@@ -1,11 +1,4 @@
 #!/bin/sh
-# Generate runtime config from environment variables.
-# This runs at container startup so the image stays environment-agnostic.
-cat <<EOF > /usr/share/nginx/html/config.js
-window.__CONFIG__ = {
-  VITE_ENTRA_CLIENT_ID: "${VITE_ENTRA_CLIENT_ID:-}",
-  VITE_ENTRA_TENANT_ID: "${VITE_ENTRA_TENANT_ID:-}",
-  VITE_TASKS_API_SCOPE: "${VITE_TASKS_API_SCOPE:-}"
-};
-EOF
+# Generate runtime nginx config with the Tasks API upstream URL.
+sed -i "s|TASKS_API_UPSTREAM|${TASKS_API_URL:-http://localhost:5223}|g" /etc/nginx/conf.d/default.conf
 exec "$@"

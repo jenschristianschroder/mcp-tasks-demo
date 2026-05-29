@@ -1,0 +1,466 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.40.2.10011",
+      "templateHash": "11867648865041593718"
+    }
+  },
+  "parameters": {
+    "environmentName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "metadata": {
+        "description": "Environment name (e.g. dev, prod). Used as a resource name suffix."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Azure region for all resources"
+      }
+    },
+    "tenantId": {
+      "type": "string",
+      "defaultValue": "[subscription().tenantId]",
+      "metadata": {
+        "description": "Entra ID tenant id"
+      }
+    },
+    "tasksApiClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "App registration client id for the Tasks API"
+      }
+    },
+    "mcpServerClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "App registration client id for the MCP server"
+      }
+    },
+    "webAppClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "App registration client id for the Web App (SPA)"
+      }
+    },
+    "postgresPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "PostgreSQL admin password"
+      }
+    }
+  },
+  "variables": {
+    "resourceToken": "[toLower(uniqueString(subscription().id, resourceGroup().id, parameters('environmentName')))]",
+    "tags": {
+      "azd-env-name": "[parameters('environmentName')]"
+    },
+    "placeholderImage": "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest",
+    "pgServerName": "[format('pg-{0}', variables('resourceToken'))]",
+    "pgDatabaseName": "tasks",
+    "pgAdminUser": "tasksadmin"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2023-09-01",
+      "name": "[format('log-{0}', variables('resourceToken'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "retentionInDays": 30
+      }
+    },
+    {
+      "type": "Microsoft.ContainerRegistry/registries",
+      "apiVersion": "2023-11-01-preview",
+      "name": "[format('acr{0}', variables('resourceToken'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "sku": {
+        "name": "Basic"
+      },
+      "properties": {
+        "adminUserEnabled": false
+      }
+    },
+    {
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2024-03-01",
+      "name": "[format('cae-{0}', variables('resourceToken'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "appLogsConfiguration": {
+          "destination": "log-analytics",
+          "logAnalyticsConfiguration": {
+            "customerId": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', format('log-{0}', variables('resourceToken'))), '2023-09-01').customerId]",
+            "sharedKey": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', format('log-{0}', variables('resourceToken'))), '2023-09-01').primarySharedKey]"
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', format('log-{0}', variables('resourceToken')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[format('id-{0}', variables('resourceToken'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]"
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken')))]",
+      "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken'))), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken'))), 'AcrPull')]",
+      "properties": {
+        "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken'))), '2023-01-31').principalId]",
+        "principalType": "ServicePrincipal",
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken')))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DBforPostgreSQL/flexibleServers",
+      "apiVersion": "2024-08-01",
+      "name": "[variables('pgServerName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "sku": {
+        "name": "Standard_B1ms",
+        "tier": "Burstable"
+      },
+      "properties": {
+        "version": "16",
+        "administratorLogin": "[variables('pgAdminUser')]",
+        "administratorLoginPassword": "[parameters('postgresPassword')]",
+        "storage": {
+          "storageSizeGB": 32
+        },
+        "backup": {
+          "backupRetentionDays": 7,
+          "geoRedundantBackup": "Disabled"
+        },
+        "highAvailability": {
+          "mode": "Disabled"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.DBforPostgreSQL/flexibleServers/databases",
+      "apiVersion": "2024-08-01",
+      "name": "[format('{0}/{1}', variables('pgServerName'), variables('pgDatabaseName'))]",
+      "properties": {
+        "charset": "UTF8",
+        "collation": "en_US.utf8"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('pgServerName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DBforPostgreSQL/flexibleServers/firewallRules",
+      "apiVersion": "2024-08-01",
+      "name": "[format('{0}/{1}', variables('pgServerName'), 'AllowAzureServices')]",
+      "properties": {
+        "startIpAddress": "0.0.0.0",
+        "endIpAddress": "0.0.0.0"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('pgServerName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2024-03-01",
+      "name": "[format('ca-tasks-api-{0}', variables('resourceToken'))]",
+      "location": "[parameters('location')]",
+      "tags": "[union(variables('tags'), createObject('azd-service-name', 'tasks-api'))]",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken'))))]": {}
+        }
+      },
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', format('cae-{0}', variables('resourceToken')))]",
+        "configuration": {
+          "ingress": {
+            "external": true,
+            "targetPort": 8080,
+            "transport": "auto"
+          },
+          "registries": [
+            {
+              "server": "[reference(resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken'))), '2023-11-01-preview').loginServer]",
+              "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken')))]"
+            }
+          ],
+          "secrets": [
+            {
+              "name": "pg-connection-string",
+              "value": "[format('Host={0};Database={1};Username={2};Password={3};SSL Mode=Require;Trust Server Certificate=true', reference(resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('pgServerName')), '2024-08-01').fullyQualifiedDomainName, variables('pgDatabaseName'), variables('pgAdminUser'), parameters('postgresPassword'))]"
+            }
+          ]
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "tasks-api",
+              "image": "[variables('placeholderImage')]",
+              "resources": {
+                "cpu": "[json('0.5')]",
+                "memory": "1Gi"
+              },
+              "env": [
+                {
+                  "name": "AzureAd__TenantId",
+                  "value": "[parameters('tenantId')]"
+                },
+                {
+                  "name": "AzureAd__ClientId",
+                  "value": "[parameters('tasksApiClientId')]"
+                },
+                {
+                  "name": "AzureAd__Audience",
+                  "value": "[format('api://{0}', parameters('tasksApiClientId'))]"
+                },
+                {
+                  "name": "ConnectionStrings__TasksDb",
+                  "secretRef": "pg-connection-string"
+                }
+              ]
+            }
+          ],
+          "scale": {
+            "minReplicas": 1,
+            "maxReplicas": 3
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken')))]",
+        "[extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken'))), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken'))), 'AcrPull'))]",
+        "[resourceId('Microsoft.App/managedEnvironments', format('cae-{0}', variables('resourceToken')))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken')))]",
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers/databases', variables('pgServerName'), variables('pgDatabaseName'))]",
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers/firewallRules', variables('pgServerName'), 'AllowAzureServices')]",
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('pgServerName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2024-03-01",
+      "name": "[format('ca-mcp-server-{0}', variables('resourceToken'))]",
+      "location": "[parameters('location')]",
+      "tags": "[union(variables('tags'), createObject('azd-service-name', 'mcp-server'))]",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken'))))]": {}
+        }
+      },
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', format('cae-{0}', variables('resourceToken')))]",
+        "configuration": {
+          "ingress": {
+            "external": true,
+            "targetPort": 8080,
+            "transport": "auto"
+          },
+          "registries": [
+            {
+              "server": "[reference(resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken'))), '2023-11-01-preview').loginServer]",
+              "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken')))]"
+            }
+          ]
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "mcp-server",
+              "image": "[variables('placeholderImage')]",
+              "resources": {
+                "cpu": "[json('0.5')]",
+                "memory": "1Gi"
+              },
+              "env": [
+                {
+                  "name": "AzureAd__TenantId",
+                  "value": "[parameters('tenantId')]"
+                },
+                {
+                  "name": "AzureAd__ClientId",
+                  "value": "[parameters('mcpServerClientId')]"
+                },
+                {
+                  "name": "AzureAd__Audience",
+                  "value": "[format('api://{0}', parameters('mcpServerClientId'))]"
+                },
+                {
+                  "name": "AzureAd__ClientCredentials__0__ManagedIdentityClientId",
+                  "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken'))), '2023-01-31').clientId]"
+                },
+                {
+                  "name": "DownstreamApi__BaseUrl",
+                  "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', format('ca-tasks-api-{0}', variables('resourceToken'))), '2024-03-01').configuration.ingress.fqdn)]"
+                },
+                {
+                  "name": "DownstreamApi__Scopes",
+                  "value": "[format('api://{0}/Tasks.ReadWrite', parameters('tasksApiClientId'))]"
+                }
+              ]
+            }
+          ],
+          "scale": {
+            "minReplicas": 1,
+            "maxReplicas": 3
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken')))]",
+        "[extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken'))), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken'))), 'AcrPull'))]",
+        "[resourceId('Microsoft.App/managedEnvironments', format('cae-{0}', variables('resourceToken')))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken')))]",
+        "[resourceId('Microsoft.App/containerApps', format('ca-tasks-api-{0}', variables('resourceToken')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2024-03-01",
+      "name": "[format('ca-web-app-{0}', variables('resourceToken'))]",
+      "location": "[parameters('location')]",
+      "tags": "[union(variables('tags'), createObject('azd-service-name', 'web-app'))]",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken'))))]": {}
+        }
+      },
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', format('cae-{0}', variables('resourceToken')))]",
+        "configuration": {
+          "ingress": {
+            "external": true,
+            "targetPort": 8080,
+            "transport": "auto"
+          },
+          "registries": [
+            {
+              "server": "[reference(resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken'))), '2023-11-01-preview').loginServer]",
+              "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken')))]"
+            }
+          ]
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "web-app",
+              "image": "[variables('placeholderImage')]",
+              "resources": {
+                "cpu": "[json('0.25')]",
+                "memory": "0.5Gi"
+              },
+              "env": [
+                {
+                  "name": "TASKS_API_URL",
+                  "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', format('ca-tasks-api-{0}', variables('resourceToken'))), '2024-03-01').configuration.ingress.fqdn)]"
+                }
+              ]
+            }
+          ],
+          "scale": {
+            "minReplicas": 1,
+            "maxReplicas": 3
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken')))]",
+        "[extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken'))), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken'))), 'AcrPull'))]",
+        "[resourceId('Microsoft.App/managedEnvironments', format('cae-{0}', variables('resourceToken')))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('resourceToken')))]",
+        "[resourceId('Microsoft.App/containerApps', format('ca-tasks-api-{0}', variables('resourceToken')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/containerApps/authConfigs",
+      "apiVersion": "2024-03-01",
+      "name": "[format('{0}/{1}', format('ca-web-app-{0}', variables('resourceToken')), 'current')]",
+      "properties": {
+        "platform": {
+          "enabled": true
+        },
+        "globalValidation": {
+          "unauthenticatedClientAction": "AllowAnonymous"
+        },
+        "identityProviders": {
+          "azureActiveDirectory": {
+            "registration": {
+              "clientId": "[parameters('webAppClientId')]",
+              "openIdIssuer": "[format('{0}{1}/v2.0', environment().authentication.loginEndpoint, parameters('tenantId'))]"
+            },
+            "login": {
+              "loginParameters": [
+                "[format('scope=openid profile email api://{0}/Tasks.ReadWrite', parameters('tasksApiClientId'))]"
+              ]
+            }
+          }
+        },
+        "login": {
+          "tokenStore": {
+            "enabled": true
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.App/containerApps', format('ca-web-app-{0}', variables('resourceToken')))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "AZURE_LOCATION": {
+      "type": "string",
+      "value": "[parameters('location')]"
+    },
+    "AZURE_CONTAINER_REGISTRY_ENDPOINT": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries', format('acr{0}', variables('resourceToken'))), '2023-11-01-preview').loginServer]"
+    },
+    "AZURE_CONTAINER_REGISTRY_NAME": {
+      "type": "string",
+      "value": "[format('acr{0}', variables('resourceToken'))]"
+    },
+    "TASKS_API_URL": {
+      "type": "string",
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', format('ca-tasks-api-{0}', variables('resourceToken'))), '2024-03-01').configuration.ingress.fqdn)]"
+    },
+    "MCP_SERVER_URL": {
+      "type": "string",
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', format('ca-mcp-server-{0}', variables('resourceToken'))), '2024-03-01').configuration.ingress.fqdn)]"
+    },
+    "MCP_ENDPOINT": {
+      "type": "string",
+      "value": "[format('https://{0}/mcp', reference(resourceId('Microsoft.App/containerApps', format('ca-mcp-server-{0}', variables('resourceToken'))), '2024-03-01').configuration.ingress.fqdn)]"
+    },
+    "WEB_APP_URL": {
+      "type": "string",
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', format('ca-web-app-{0}', variables('resourceToken'))), '2024-03-01').configuration.ingress.fqdn)]"
+    }
+  }
+}
