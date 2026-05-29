@@ -9,13 +9,11 @@ import {
   Persona,
 } from '@fluentui/react-components';
 import { PersonAccounts24Regular, SignOut24Regular } from '@fluentui/react-icons';
-import { useIsAuthenticated, useMsal } from '@azure/msal-react';
-import { InteractionStatus } from '@azure/msal-browser';
 import { TaskList } from './components/TaskList';
 import { TaskForm } from './components/TaskForm';
 import { ApiConsole } from './components/ApiConsole';
 import { tasksApi, onApiLog, setAccessTokenProvider } from './api/tasksApi';
-import { loginRequest } from './auth/authConfig';
+import { getAuthUser, getAccessToken, login, logout, EasyAuthUser } from './auth/easyAuth';
 import { ApiLogEntry, TodoTask } from './types';
 
 const useStyles = makeStyles({
@@ -66,24 +64,24 @@ const useStyles = makeStyles({
 
 export default function App() {
   const styles = useStyles();
-  const { instance, accounts, inProgress } = useMsal();
-  const isAuthenticated = useIsAuthenticated();
+  const [user, setUser] = useState<EasyAuthUser | null>(null);
   const [tasks, setTasks] = useState<TodoTask[]>([]);
   const [logs, setLogs] = useState<ApiLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
-  // Wire up token provider once authenticated
+  const isAuthenticated = !!user;
+
+  // Check EasyAuth session on mount
   useEffect(() => {
-    if (isAuthenticated && accounts.length > 0) {
-      setAccessTokenProvider(async () => {
-        const response = await instance.acquireTokenSilent({
-          ...loginRequest,
-          account: accounts[0],
-        });
-        return response.accessToken;
-      });
-    }
-  }, [isAuthenticated, accounts, instance]);
+    getAuthUser().then((u) => {
+      setUser(u);
+      setAuthChecked(true);
+      if (u) {
+        setAccessTokenProvider(getAccessToken);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onApiLog((entry) => {
@@ -110,14 +108,14 @@ export default function App() {
   }, [loadTasks]);
 
   const handleLogin = () => {
-    instance.loginPopup(loginRequest);
+    login();
   };
 
   const handleLogout = () => {
-    instance.logoutPopup();
+    logout();
   };
 
-  const userName = accounts[0]?.name || accounts[0]?.username || '';
+  const userName = user?.name || '';
 
   return (
     <div className={styles.root}>
@@ -173,7 +171,7 @@ export default function App() {
                 appearance="primary"
                 icon={<PersonAccounts24Regular />}
                 onClick={handleLogin}
-                disabled={inProgress !== InteractionStatus.None}
+                disabled={!authChecked}
               >
                 Sign in
               </Button>

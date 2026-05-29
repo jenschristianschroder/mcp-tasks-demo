@@ -202,9 +202,9 @@ az rest --method PATCH `
 if ($LASTEXITCODE -ne 0) { Write-Warning "Failed to pre-authorize Copilot Studio. You may need to do this manually." }
 Remove-Item mcp-preauth.json -Force
 
-# ── 3. Web app (SPA) registration ────────────────────────────────────────────
+# ── 3. Web app registration (EasyAuth) ────────────────────────────────────────
 
-Write-Host "==> Creating Web App (SPA) registration: $WebAppName"
+Write-Host "==> Creating Web App registration: $WebAppName"
 $existingWebApp = az ad app list --display-name $WebAppName --query "[0].appId" -o tsv 2>$null
 if ($existingWebApp) {
   Write-Host "    App already exists: $existingWebApp"
@@ -219,14 +219,16 @@ if ($existingWebApp) {
 Write-Host "    App ID: $webAppId"
 $webAppObjId = az ad app show --id $webAppId --query id -o tsv
 
-# Step 3a: Configure as SPA with redirect URIs
-Write-Host "    Configuring SPA redirect URIs..."
+# Step 3a: Enable implicit ID token issuance (required by EasyAuth) and set web redirect URIs
+Write-Host "    Enabling ID token issuance for EasyAuth..."
 @{
-  spa = @{
+  web = @{
     redirectUris = @(
-      "http://localhost:3000",
-      "http://localhost:5173"
+      "http://localhost:3000/.auth/login/aad/callback"
     )
+    implicitGrantSettings = @{
+      enableIdTokenIssuance = $true
+    }
   }
 } | ConvertTo-Json -Depth 10 | Out-File -Encoding utf8 webapp-spa.json
 

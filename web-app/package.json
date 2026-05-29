@@ -9,8 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@azure/msal-browser": "^5.11.0",
-    "@azure/msal-react": "^5.4.2",
     "@fluentui/react-components": "^9.56.0",
     "@fluentui/react-icons": "^2.0.260",
     "react": "^18.3.1",

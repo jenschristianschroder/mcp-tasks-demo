@@ -215,11 +215,44 @@ resource mcpServer 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
+// Storage account for EasyAuth token store
+resource tokenStorageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+  name: 'st${resourceToken}'
+  location: location
+  tags: tags
+  kind: 'StorageV2'
+  sku: { name: 'Standard_LRS' }
+  properties: {
+    allowBlobPublicAccess: false
+    minimumTlsVersion: 'TLS1_2'
+  }
+}
+
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+  parent: tokenStorageAccount
+  name: 'default'
+}
+
+resource tokenStoreContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: blobService
+  name: 'tokenstore'
+}
+
+var tokenStoreSas = tokenStorageAccount.listAccountSas('2023-05-01', {
+  signedProtocol: 'https'
+  signedResourceTypes: 'sco'
+  signedPermission: 'rwdlacup'
+  signedServices: 'b'
+  signedExpiry: '2030-01-01T00:00:00Z'
+}).accountSasToken
+
+var tokenStoreSasUrl = '${tokenStorageAccount.properties.primaryEndpoints.blob}tokenstore?${tokenStoreSas}'
+
 resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'ca-web-app-${resourceToken}'
   location: location
   tags: union(tags, { 'azd-service-name': 'web-app' })
-  dependsOn: [acrPullRole]
+  dependsOn: [acrPullRole, tokenStoreContainer]
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: { '${identity.id}': {} }
@@ -236,19 +269,52 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
         server: acr.properties.loginServer
         identity: identity.id
       }]
+      secrets: [
+        { name: 'token-store-sas', value: tokenStoreSasUrl }
+      ]
     }
     template: {
       containers: [{
         name: 'web-app'
         image: placeholderImage
         resources: { cpu: json('0.25'), memory: '0.5Gi' }
-        env: [
-          { name: 'VITE_ENTRA_CLIENT_ID', value: webAppClientId }
-          { name: 'VITE_ENTRA_TENANT_ID', value: tenantId }
-          { name: 'VITE_TASKS_API_SCOPE', value: 'api://${tasksApiClientId}/Tasks.ReadWrite' }
-        ]
       }]
       scale: { minReplicas: 1, maxReplicas: 3 }
+    }
+  }
+}
+
+// EasyAuth configuration for the Web App
+resource webAppAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = {
+  parent: webApp
+  name: 'current'
+  properties: {
+    platform: {
+      enabled: true
+    }
+    globalValidation: {
+      unauthenticatedClientAction: 'RedirectToLoginPage'
+    }
+    identityProviders: {
+      azureActiveDirectory: {
+        registration: {
+          clientId: webAppClientId
+          openIdIssuer: '${environment().authentication.loginEndpoint}${tenantId}/v2.0'
+        }
+        login: {
+          loginParameters: [
+            'scope=openid profile email api://${tasksApiClientId}/Tasks.ReadWrite'
+          ]
+        }
+      }
+    }
+    login: {
+      tokenStore: {
+        enabled: true
+        azureBlobStorage: {
+          sasUrlSettingName: 'token-store-sas'
+        }
+      }
     }
   }
 }
