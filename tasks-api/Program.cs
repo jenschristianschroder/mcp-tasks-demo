@@ -63,6 +63,17 @@ app.UseSwaggerUI(c =>
 {
     c.OAuthClientId(clientId);
     c.OAuthUsePkce();
+    c.OAuthScopes($"api://{clientId}/Tasks.ReadWrite");
+
+    // Strip client_secret from token requests — the app is a public client (SPA)
+    // and Entra ID rejects requests that include it (AADSTS700025).
+    c.UseRequestInterceptor(
+        "(req) => {"
+        + " if (req.body && typeof req.body === 'string' && req.body.includes('client_secret')) {"
+        + "   req.body = req.body.split('&').filter(p => !p.startsWith('client_secret=')).join('&');"
+        + " }"
+        + " return req;"
+        + "}");
 });
 
 app.UseAuthentication();
