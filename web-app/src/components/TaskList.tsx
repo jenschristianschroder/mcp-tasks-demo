@@ -11,6 +11,8 @@ import {
   Input,
   Textarea,
   Field,
+  Dropdown,
+  Option,
   Menu,
   MenuTrigger,
   MenuList,
@@ -150,6 +152,7 @@ function TaskCard({ task, onChanged }: TaskCardProps) {
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
   const [editDescription, setEditDescription] = useState(task.description || '');
+  const [editStatus, setEditStatus] = useState<TodoStatus>(task.status);
   const [editDueDate, setEditDueDate] = useState(
     task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : ''
   );
@@ -181,6 +184,7 @@ function TaskCard({ task, onChanged }: TaskCardProps) {
   const handleEdit = () => {
     setEditTitle(task.title);
     setEditDescription(task.description || '');
+    setEditStatus(task.status);
     setEditDueDate(
       task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : ''
     );
@@ -197,6 +201,7 @@ function TaskCard({ task, onChanged }: TaskCardProps) {
       await tasksApi.update(task.id, {
         title: editTitle.trim(),
         description: editDescription.trim() || null,
+        status: editStatus,
         dueDate: editDueDate ? new Date(editDueDate).toISOString() : null,
       });
       setEditing(false);
@@ -218,6 +223,18 @@ function TaskCard({ task, onChanged }: TaskCardProps) {
                 value={editTitle}
                 onChange={(_, d) => setEditTitle(d.value)}
               />
+            </Field>
+            <Field label="Status">
+              <Dropdown
+                value={statusLabels[editStatus]}
+                selectedOptions={[editStatus]}
+                onOptionSelect={(_, d) => setEditStatus(d.optionValue as TodoStatus)}
+              >
+                <Option value="Open">Open</Option>
+                <Option value="InProgress">In Progress</Option>
+                <Option value="Done">Done</Option>
+                <Option value="Cancelled">Cancelled</Option>
+              </Dropdown>
             </Field>
             <Field label="Due Date">
               <Input
