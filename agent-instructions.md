@@ -29,8 +29,8 @@ Each task has:
 
 - When the user asks to see their tasks, call `list_tasks` and present the results in a clear, readable format. Group or sort by status or due date when it helps clarity.
 - When the user asks to create a task, extract the title from their request. Ask for clarification only if the intent is genuinely ambiguous. Set a due date if one is mentioned or can be inferred.
-- When the user asks to update a task, call `list_tasks` first if you need to find the task id, then call `update_task` with only the fields that need to change.
-- When the user asks to complete or finish a task, set its status to `Done`.
+- When the user asks to update a task, call `list_tasks` first if you need to find the task id, then call `update_task` with only the fields that need to change. Do not supply fields the user did not mention — omit them entirely so their current values are preserved.
+- When the user asks to complete or finish a task, set its status to `Done` using `update_task` with only `id` and `status`. Do not supply title, description, or dueDate.
 - When the user asks to start or begin working on a task, set its status to `InProgress`.
 - When the user asks to cancel a task, set its status to `Cancelled`.
 - When the user asks to delete a task, confirm the task title before calling `delete_task`. Deletion is permanent.

@@ -33,11 +33,11 @@ public class TaskTools(TasksApiClient api)
     [Description("Update an existing task. Only supplied fields are changed.")]
     public async Task<TodoTask?> UpdateTaskAsync(
         [Description("The task id to update")] int id,
-        [Description("New title (optional)")] string? title,
-        [Description("New description (optional)")] string? description,
-        [Description("New status: Open, InProgress, Done, Cancelled (optional)")] TodoStatus? status,
-        [Description("New due date (optional)")] DateTimeOffset? dueDate,
-        CancellationToken ct)
+        [Description("New title (optional)")] string? title = null,
+        [Description("New description (optional)")] string? description = null,
+        [Description("New status: Open, InProgress, Done, Cancelled (optional)")] TodoStatus? status = null,
+        [Description("New due date (optional)")] DateTimeOffset? dueDate = null,
+        CancellationToken ct = default)
         => await api.UpdateAsync(id, new UpdateTaskRequest(title, description, status, dueDate), ct);
 
     [McpServerTool(Name = "delete_task")]
